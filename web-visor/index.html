@@ -10,6 +10,7 @@
 
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
+
     #panel {
       position: absolute;
       top: 12px; left: 12px;
@@ -20,12 +21,13 @@
       z-index: 1000;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       min-width: 260px;
-      max-width: 340px;
+      max-width: 360px;
     }
-    #title { font-weight: 700; margin-bottom: 6px; }
+    #title { font-weight: 800; margin-bottom: 6px; }
     #status { font-size: 13px; color: #333; margin-bottom: 8px; }
     #legendWrap { margin-top: 10px; }
     #legendWrap img { width: 100%; border: 1px solid #eee; border-radius: 10px; }
+
     .pill {
       display: inline-block;
       padding: 3px 8px;
@@ -36,6 +38,15 @@
     }
     .hint { font-size: 12px; color: #555; line-height: 1.3; margin-top: 8px; }
     .muted { color: #666; }
+
+    .perm-chip{
+      display:inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 12px;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
   </style>
 </head>
 
@@ -51,7 +62,7 @@
     </div>
 
     <div id="legendWrap">
-      <div style="font-weight:600; margin:10px 0 6px;">Leyenda</div>
+      <div style="font-weight:700; margin:10px 0 6px;">Leyenda</div>
       <img id="legendImg" alt="Leyenda WMS" />
     </div>
   </div>
@@ -62,11 +73,9 @@
     // =========================
     // CONFIG
     // =========================
-    const OWS_BASE = "https://demoquininde-production.up.railway.app/ows/";
-    const LAYER_NAME = "lotes_demo";      // <- tu capa publicada
-    const ID_FIELD   = "OBJECTID";        // <- cambia si tu campo es otro (ej. "id_lote")
-
-    // Zoom inicial (si NO viene id_lote)
+    const OWS_BASE   = "https://demoquininde-production.up.railway.app/ows/";
+    const LAYER_NAME = "lotes_demo";   // capa publicada
+    const ID_FIELD   = "OBJECTID";     // id del lote (por QR)
     const DEFAULT_VIEW = { lat: 0.0, lng: -79.45, z: 12 };
 
     // =========================
@@ -82,9 +91,25 @@
 
     function setStatus(msg) { statusEl.textContent = msg; }
 
-    function toLatLngBoundsFromGeoJSON(geojson) {
-      const layer = L.geoJSON(geojson);
-      return layer.getBounds();
+    // Colores por PERMISO
+    function permisoInfo(p) {
+      const val = (p ?? "").toString().trim().toUpperCase();
+      if (val.includes("CONSTRU")) return { text: p, fg: "#0b6b2f", bg: "#d9fbe5" };
+      if (val.includes("DERRO"))   return { text: p, fg: "#b00020", bg: "#ffd9de" };
+      if (val.includes("NO"))      return { text: p, fg: "#4b5563", bg: "#eef0f3" };
+      return { text: p || "—", fg: "#111827", bg: "#f3f4f6" };
+    }
+
+    function permisoChipHTML(p) {
+      const info = permisoInfo(p);
+      return `<span class="perm-chip" style="color:${info.fg}; background:${info.bg};">
+        ${info.text || "—"}
+      </span>`;
+    }
+
+    function fmt(v) {
+      if (v === null || v === undefined || v === "") return "—";
+      return v;
     }
 
     // =========================
@@ -106,11 +131,8 @@
     }).addTo(map);
 
     // Leyenda real desde el WMS
-    const legendUrl =
-      `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetLegendGraphic` +
-      `&FORMAT=image/png&LAYER=${encodeURIComponent(LAYER_NAME)}`;
-
-    document.getElementById("legendImg").src = legendUrl;
+    document.getElementById("legendImg").src =
+      `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(LAYER_NAME)}`;
 
     // Pane para highlight
     map.createPane("highlight");
@@ -125,16 +147,14 @@
     }
 
     // =========================
-    // 1) Si viene id_lote (por QR): buscar por WFS y resaltar + zoom
+    // 1) QR -> buscar por WFS y resaltar + zoom
     // =========================
     async function zoomToLoteByWFS(idValue) {
-      // WFS GeoJSON
       const baseWFS =
         `${OWS_BASE}?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature` +
         `&TYPENAME=${encodeURIComponent(LAYER_NAME)}` +
         `&OUTPUTFORMAT=application/json`;
 
-      // Filter XML igual que tu versión local
       const filterXml = `
         <Filter>
           <PropertyIsEqualTo>
@@ -159,39 +179,43 @@
       clearHighlight();
 
       const feature = data.features[0];
+      const props = feature.properties || {};
+
       highlightLayer = L.geoJSON(feature, {
         pane: "highlight",
-        style: { color: "red", weight: 3, fillOpacity: 0.35 }
+        style: { color: "red", weight: 3, fillOpacity: 0.30 }
       }).addTo(map);
 
       map.fitBounds(highlightLayer.getBounds(), { maxZoom: 19 });
 
-      const props = feature.properties || {};
       const popup = `
-        <b>Lote:</b> ${props[ID_FIELD] ?? "—"}<br>
-        <b>Estado:</b> ${props.estado ?? props.ESTADO ?? "—"}<br>
-        <b>Clave catastral:</b> ${props.CLAVE_CATA ?? props.clave_catastral ?? "—"}<br>
-        <b>Parroquia:</b> ${props.PARROQUIA ?? props.parroquia ?? "—"}
+        <div style="line-height:1.35; min-width:220px;">
+          <div style="font-weight:900; font-size:14px; margin-bottom:6px;">Lote ${fmt(props[ID_FIELD])}</div>
+          <div><b>Permiso:</b> ${permisoChipHTML(props.PERMISO)}</div>
+          <div><b>Cat. lote:</b> ${fmt(props.CAT_LOTE_I)}</div>
+          <div><b>Número lote:</b> ${fmt(props.NUMERO_LOT)}</div>
+          <div><b>Clave catastral:</b> ${fmt(props.CLAVE_CATA)}</div>
+          <div><b>Parroquia:</b> ${fmt(props.PARROQUIA)}</div>
+          <div><b>Zonificación:</b> ${fmt(props.ZONIFICACI)}</div>
+          <div><b>Área:</b> ${fmt(props.AREA_TERRE)}</div>
+        </div>
       `;
 
       highlightLayer.bindPopup(popup).openPopup();
-      setStatus(`✅ Lote ${props[ID_FIELD] ?? idValue} encontrado`);
+      setStatus(`✅ Lote ${fmt(props[ID_FIELD])} encontrado`);
     }
 
     // =========================
-    // 2) Click: GetFeatureInfo (para verificar info sin depender del WFS)
+    // 2) Click: GetFeatureInfo
     // =========================
     function getFeatureInfoUrl(latlng) {
       const point = map.latLngToContainerPoint(latlng, map.getZoom());
       const size  = map.getSize();
 
-      // BBOX en EPSG:3857 para que sea consistente con OSM
-      // Leaflet por defecto trabaja en 3857 para tiles.
       const bounds = map.getBounds();
       const sw = bounds.getSouthWest();
       const ne = bounds.getNorthEast();
 
-      // Convert latlng to EPSG:3857 bbox
       function project3857(ll) {
         const d = Math.PI / 180;
         const max = 85.0511287798;
@@ -206,7 +230,6 @@
       const nem = project3857(ne);
       const bbox = `${swm.x},${swm.y},${nem.x},${nem.y}`;
 
-      // WMS 1.3.0 usa i/j y CRS
       const params =
         `SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo` +
         `&LAYERS=${encodeURIComponent(LAYER_NAME)}` +
@@ -228,38 +251,38 @@
         if (!r.ok) throw new Error("GetFeatureInfo no respondió OK");
 
         const data = await r.json();
-
         const features = data.features || [];
+
         if (!features.length) {
-          setStatus("👀 No hay lote en ese punto (o está fuera).");
+          setStatus("👀 No hay lote en ese punto.");
           return;
         }
 
-        // Tomamos la primera coincidencia
         const f = features[0];
         const props = f.properties || {};
 
         setStatus("✅ Info cargada (click).");
 
-        // Si viene geometría, resalta. Si no, solo popup.
         clearHighlight();
         if (f.geometry) {
           highlightLayer = L.geoJSON(f, {
             pane: "highlight",
-            style: { color: "#111", weight: 3, fillOpacity: 0.2 }
+            style: { color: "#111", weight: 3, fillOpacity: 0.18 }
           }).addTo(map);
         }
 
-  
-
         const popup = `
-          <b>Lote (ID):</b> ${props[ID_FIELD] ?? "—"}<br>
-          <b>Permiso:</b> <b>${props.PERMISO ?? "—"}</b><br>
-          <b>Clave catastral:</b> ${props.CLAVE_CATA ?? "—"}<br>
-          <b>Área (m²):</b> ${props.AREA_TERRE ?? "—"}<br>
-          <b>Parroquia:</b> ${props.PARROQUIA ?? "—"}
+          <div style="line-height:1.35; min-width:220px;">
+            <div style="font-weight:900; font-size:14px; margin-bottom:6px;">Lote ${fmt(props[ID_FIELD])}</div>
+            <div><b>Permiso:</b> ${permisoChipHTML(props.PERMISO)}</div>
+            <div><b>Cat. lote:</b> ${fmt(props.CAT_LOTE_I)}</div>
+            <div><b>Número lote:</b> ${fmt(props.NUMERO_LOT)}</div>
+            <div><b>Clave catastral:</b> ${fmt(props.CLAVE_CATA)}</div>
+            <div><b>Parroquia:</b> ${fmt(props.PARROQUIA)}</div>
+            <div><b>Zonificación:</b> ${fmt(props.ZONIFICACI)}</div>
+            <div><b>Área:</b> ${fmt(props.AREA_TERRE)}</div>
+          </div>
         `;
-
 
         L.popup()
           .setLatLng(e.latlng)
@@ -279,7 +302,6 @@
     // =========================
     (async function init() {
       try {
-        // Si viene QR, zoom por WFS
         if (idLote) {
           await zoomToLoteByWFS(idLote);
         } else {
