@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Visor de Lotes - Quinindé</title>
+  <title>Visor de Lotes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -10,308 +10,285 @@
 
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
-
-    #panel {
-      position: absolute;
-      top: 12px; left: 12px;
-      background: rgba(255,255,255,0.95);
-      padding: 10px 12px;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.18);
-      z-index: 1000;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      min-width: 260px;
-      max-width: 360px;
+    #panel{
+      position:absolute; top:12px; left:12px; z-index:1000;
+      background:rgba(255,255,255,.95); padding:10px 12px;
+      border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,.18);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      min-width:260px; max-width:360px;
     }
-    #title { font-weight: 800; margin-bottom: 6px; }
-    #status { font-size: 13px; color: #333; margin-bottom: 8px; }
-    #legendWrap { margin-top: 10px; }
-    #legendWrap img { width: 100%; border: 1px solid #eee; border-radius: 10px; }
-
-    .pill {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: #f2f2f2;
-      font-size: 12px;
-      margin-top: 6px;
-    }
-    .hint { font-size: 12px; color: #555; line-height: 1.3; margin-top: 8px; }
-    .muted { color: #666; }
-
-    .perm-chip{
-      display:inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-weight: 800;
-      font-size: 12px;
-      border: 1px solid rgba(0,0,0,0.08);
-    }
+    #title{ font-weight:900; margin-bottom:6px; }
+    #status{ font-size:13px; margin-bottom:8px; }
+    .pill{ display:inline-block; padding:3px 8px; border-radius:999px; background:#f2f2f2; font-size:12px; }
+    .hint{ font-size:12px; color:#555; margin-top:8px; line-height:1.3; }
+    #legendWrap{ margin-top:10px; }
+    #legendWrap img{ width:100%; border:1px solid #eee; border-radius:10px; }
+    .perm-chip{ display:inline-block; padding:2px 8px; border-radius:999px; font-weight:900; font-size:12px; border:1px solid rgba(0,0,0,.08); }
   </style>
 </head>
-
 <body>
   <div id="panel">
     <div id="title">Visor de Lotes</div>
     <div id="status">Cargando…</div>
-    <div class="pill" id="qrPill">QR: <span class="muted">—</span></div>
-
+    <div class="pill" id="qrPill">QR: —</div>
     <div class="hint">
-      • Click en un lote para ver info<br/>
-      • O usa <b>?id_lote=123</b> en el link (QR)
+      • Click en un lote para ver info<br>
+      • O usa <b>?id_lote=55</b> en el link (QR)
     </div>
-
     <div id="legendWrap">
-      <div style="font-weight:700; margin:10px 0 6px;">Leyenda</div>
-      <img id="legendImg" alt="Leyenda WMS" />
+      <div style="font-weight:800; margin:10px 0 6px;">Leyenda</div>
+      <img id="legendImg" alt="Leyenda WMS"/>
     </div>
   </div>
 
   <div id="map"></div>
 
-  <script>
-    // =========================
-    // CONFIG
-    // =========================
-    const OWS_BASE   = "https://demoquininde-production.up.railway.app/ows/";
-    const LAYER_NAME = "lotes_demo";   // capa publicada
-    const ID_FIELD   = "OBJECTID";     // id del lote (por QR)
-    const DEFAULT_VIEW = { lat: 0.0, lng: -79.45, z: 12 };
+<script>
+  // =========================
+  // CONFIG (IMPORTANTE)
+  // =========================
+  // OJO: usamos /ows/ relativo porque lo va a servir tu NGINX (proxy) en ESTE MISMO dominio.
+  const OWS_BASE   = "/ows/";
+  const LAYER_NAME = "lotes_demo";
+  const ID_FIELD   = "OBJECTID";   // tu QR usa OBJECTID (ej 55)
 
-    // =========================
-    // Helpers
-    // =========================
-    const qs = new URLSearchParams(window.location.search);
-    const idLote = qs.get("id_lote");
+  // =========================
+  // UI helpers
+  // =========================
+  const qs = new URLSearchParams(location.search);
+  const idLote = qs.get("id_lote");
+  const statusEl = document.getElementById("status");
+  const qrPill = document.getElementById("qrPill");
+  qrPill.textContent = `QR: ${idLote ?? "—"}`;
 
-    const statusEl = document.getElementById("status");
-    const qrPill   = document.getElementById("qrPill");
+  function setStatus(msg){ statusEl.textContent = msg; }
+  function fmt(v){ return (v===null || v===undefined || v==="") ? "—" : v; }
 
-    qrPill.innerHTML = `QR: <span class="muted">${idLote ?? "—"}</span>`;
+  function permisoInfo(p){
+    const val = (p ?? "").toString().trim().toUpperCase();
+    if (val.includes("CONSTRU")) return { text: p, fg:"#0b6b2f", bg:"#d9fbe5" };
+    if (val.includes("DERRO"))   return { text: p, fg:"#b00020", bg:"#ffd9de" };
+    if (val.includes("NO"))      return { text: p, fg:"#4b5563", bg:"#eef0f3" };
+    return { text: p || "—", fg:"#111827", bg:"#f3f4f6" };
+  }
+  function permisoChipHTML(p){
+    const info = permisoInfo(p);
+    return `<span class="perm-chip" style="color:${info.fg}; background:${info.bg};">${info.text || "—"}</span>`;
+  }
 
-    function setStatus(msg) { statusEl.textContent = msg; }
+  // =========================
+  // MAP
+  // =========================
+  // Vista temporal mientras leemos el extent del WMS
+  const map = L.map("map").setView([0,0], 2);
 
-    // Colores por PERMISO
-    function permisoInfo(p) {
-      const val = (p ?? "").toString().trim().toUpperCase();
-      if (val.includes("CONSTRU")) return { text: p, fg: "#0b6b2f", bg: "#d9fbe5" };
-      if (val.includes("DERRO"))   return { text: p, fg: "#b00020", bg: "#ffd9de" };
-      if (val.includes("NO"))      return { text: p, fg: "#4b5563", bg: "#eef0f3" };
-      return { text: p || "—", fg: "#111827", bg: "#f3f4f6" };
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 20, attribution: "© OpenStreetMap"
+  }).addTo(map);
+
+  const wmsLayer = L.tileLayer.wms(OWS_BASE, {
+    layers: LAYER_NAME,
+    format: "image/png",
+    transparent: true,
+    version: "1.3.0"
+  }).addTo(map);
+
+  // Leyenda
+  document.getElementById("legendImg").src =
+    `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(LAYER_NAME)}`;
+
+  // Highlight
+  map.createPane("highlight");
+  map.getPane("highlight").style.zIndex = 650;
+  let highlightLayer = null;
+  function clearHighlight(){
+    if (highlightLayer){ map.removeLayer(highlightLayer); highlightLayer = null; }
+  }
+
+  // =========================
+  // 1) Extent automático desde GetCapabilities
+  // =========================
+  async function fitToWmsExtent(){
+    setStatus("Leyendo extent del WMS…");
+    const url = `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities`;
+
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("No se pudo leer GetCapabilities");
+    const txt = await r.text();
+
+    const xml = new DOMParser().parseFromString(txt, "text/xml");
+    // busca el Layer por Name = lotes_demo
+    const layers = Array.from(xml.getElementsByTagName("Layer"));
+    const target = layers.find(L => {
+      const name = L.getElementsByTagName("Name")[0]?.textContent?.trim();
+      return name === LAYER_NAME;
+    });
+
+    if (!target) throw new Error("No encontré la capa en Capabilities");
+
+    // Preferimos EX_GeographicBoundingBox (WMS 1.3.0)
+    const ex = target.getElementsByTagName("EX_GeographicBoundingBox")[0];
+    if (ex){
+      const west  = parseFloat(ex.getElementsByTagName("westBoundLongitude")[0].textContent);
+      const east  = parseFloat(ex.getElementsByTagName("eastBoundLongitude")[0].textContent);
+      const south = parseFloat(ex.getElementsByTagName("southBoundLatitude")[0].textContent);
+      const north = parseFloat(ex.getElementsByTagName("northBoundLatitude")[0].textContent);
+
+      const bounds = L.latLngBounds([south, west], [north, east]);
+      map.fitBounds(bounds, { padding:[20,20] });
+      setStatus("✅ Extent ajustado al WMS");
+      return;
     }
 
-    function permisoChipHTML(p) {
-      const info = permisoInfo(p);
-      return `<span class="perm-chip" style="color:${info.fg}; background:${info.bg};">
-        ${info.text || "—"}
-      </span>`;
+    // fallback: LatLonBoundingBox
+    const ll = target.getElementsByTagName("LatLonBoundingBox")[0];
+    if (ll){
+      const west  = parseFloat(ll.getAttribute("minx"));
+      const south = parseFloat(ll.getAttribute("miny"));
+      const east  = parseFloat(ll.getAttribute("maxx"));
+      const north = parseFloat(ll.getAttribute("maxy"));
+      const bounds = L.latLngBounds([south, west], [north, east]);
+      map.fitBounds(bounds, { padding:[20,20] });
+      setStatus("✅ Extent ajustado al WMS");
+      return;
     }
 
-    function fmt(v) {
-      if (v === null || v === undefined || v === "") return "—";
-      return v;
+    throw new Error("No encontré bounding box en Capabilities");
+  }
+
+  // =========================
+  // 2) QR -> WFS (zoom + popup)
+  // =========================
+  async function zoomToLoteByWFS(idValue){
+    const baseWFS =
+      `${OWS_BASE}?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature` +
+      `&TYPENAME=${encodeURIComponent(LAYER_NAME)}` +
+      `&OUTPUTFORMAT=application/json`;
+
+    const filterXml = `
+      <Filter>
+        <PropertyIsEqualTo>
+          <PropertyName>${ID_FIELD}</PropertyName>
+          <Literal>${idValue}</Literal>
+        </PropertyIsEqualTo>
+      </Filter>`;
+
+    const url = baseWFS + "&FILTER=" + encodeURIComponent(filterXml);
+
+    setStatus(`Buscando lote ${idValue}…`);
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("WFS no respondió OK");
+    const data = await r.json();
+
+    if (!data.features || data.features.length === 0){
+      setStatus(`❌ No se encontró el lote ${idValue}`);
+      return;
     }
 
-    // =========================
-    // Map
-    // =========================
-    const map = L.map("map").setView([DEFAULT_VIEW.lat, DEFAULT_VIEW.lng], DEFAULT_VIEW.z);
+    clearHighlight();
+    const feature = data.features[0];
+    const props = feature.properties || {};
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 20,
-      attribution: "© OpenStreetMap"
+    highlightLayer = L.geoJSON(feature, {
+      pane:"highlight",
+      style:{ color:"red", weight:3, fillOpacity:0.30 }
     }).addTo(map);
 
-    // WMS overlay
-    const wmsLayer = L.tileLayer.wms(OWS_BASE, {
-      layers: LAYER_NAME,
-      format: "image/png",
-      transparent: true,
-      version: "1.3.0"
-    }).addTo(map);
+    map.fitBounds(highlightLayer.getBounds(), { maxZoom: 19 });
 
-    // Leyenda real desde el WMS
-    document.getElementById("legendImg").src =
-      `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(LAYER_NAME)}`;
+    const popup = `
+      <div style="line-height:1.35; min-width:240px;">
+        <div style="font-weight:900; font-size:14px; margin-bottom:6px;">Lote ${fmt(props[ID_FIELD])}</div>
+        <div><b>Permiso:</b> ${permisoChipHTML(props.PERMISO)}</div>
+        <div><b>Clave catastral:</b> ${fmt(props.CLAVE_CATA)}</div>
+        <div><b>Número lote:</b> ${fmt(props.NUMERO_LOT)}</div>
+        <div><b>Parroquia:</b> ${fmt(props.PARROQUIA)}</div>
+        <div><b>Zonificación:</b> ${fmt(props.ZONIFICACI)}</div>
+        <div><b>Área:</b> ${fmt(props.AREA_TERRE)}</div>
+      </div>
+    `;
+    highlightLayer.bindPopup(popup).openPopup();
+    setStatus(`✅ Lote ${fmt(props[ID_FIELD])} encontrado`);
+  }
 
-    // Pane para highlight
-    map.createPane("highlight");
-    map.getPane("highlight").style.zIndex = 650;
+  // =========================
+  // 3) Click -> GetFeatureInfo (JSON)
+  // =========================
+  function project3857(ll){
+    const d = Math.PI/180, max=85.0511287798;
+    const lat = Math.max(Math.min(max, ll.lat), -max);
+    const sin = Math.sin(lat*d);
+    const x = 6378137 * ll.lng * d;
+    const y = 6378137 * Math.log((1 + sin) / (1 - sin)) / 2;
+    return {x,y};
+  }
 
-    let highlightLayer = null;
-    function clearHighlight() {
-      if (highlightLayer) {
-        map.removeLayer(highlightLayer);
-        highlightLayer = null;
-      }
-    }
+  function getFeatureInfoUrl(latlng){
+    const point = map.latLngToContainerPoint(latlng, map.getZoom());
+    const size = map.getSize();
+    const b = map.getBounds();
+    const sw = project3857(b.getSouthWest());
+    const ne = project3857(b.getNorthEast());
+    const bbox = `${sw.x},${sw.y},${ne.x},${ne.y}`;
 
-    // =========================
-    // 1) QR -> buscar por WFS y resaltar + zoom
-    // =========================
-    async function zoomToLoteByWFS(idValue) {
-      const baseWFS =
-        `${OWS_BASE}?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature` +
-        `&TYPENAME=${encodeURIComponent(LAYER_NAME)}` +
-        `&OUTPUTFORMAT=application/json`;
+    return `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo` +
+      `&LAYERS=${encodeURIComponent(LAYER_NAME)}` +
+      `&QUERY_LAYERS=${encodeURIComponent(LAYER_NAME)}` +
+      `&CRS=EPSG:3857&BBOX=${bbox}` +
+      `&WIDTH=${size.x}&HEIGHT=${size.y}` +
+      `&I=${Math.round(point.x)}&J=${Math.round(point.y)}` +
+      `&INFO_FORMAT=application/json&FEATURE_COUNT=5`;
+  }
 
-      const filterXml = `
-        <Filter>
-          <PropertyIsEqualTo>
-            <PropertyName>${ID_FIELD}</PropertyName>
-            <Literal>${idValue}</Literal>
-          </PropertyIsEqualTo>
-        </Filter>`;
-
-      const url = baseWFS + "&FILTER=" + encodeURIComponent(filterXml);
-
-      setStatus(`Buscando lote ${idValue}…`);
-
+  map.on("click", async (e) => {
+    try{
+      const url = getFeatureInfoUrl(e.latlng);
       const r = await fetch(url);
-      if (!r.ok) throw new Error("WFS no respondió OK");
+      if (!r.ok) throw new Error("GetFeatureInfo no OK");
       const data = await r.json();
+      const f = (data.features || [])[0];
+      if (!f){ setStatus("👀 No hay lote en ese punto."); return; }
 
-      if (!data.features || data.features.length === 0) {
-        setStatus(`❌ No se encontró el lote ${idValue}`);
-        return;
-      }
+      const props = f.properties || {};
+      setStatus("✅ Info cargada (click).");
 
       clearHighlight();
-
-      const feature = data.features[0];
-      const props = feature.properties || {};
-
-      highlightLayer = L.geoJSON(feature, {
-        pane: "highlight",
-        style: { color: "red", weight: 3, fillOpacity: 0.30 }
-      }).addTo(map);
-
-      map.fitBounds(highlightLayer.getBounds(), { maxZoom: 19 });
+      if (f.geometry){
+        highlightLayer = L.geoJSON(f, { pane:"highlight", style:{ color:"#111", weight:3, fillOpacity:0.18 } }).addTo(map);
+      }
 
       const popup = `
-        <div style="line-height:1.35; min-width:220px;">
+        <div style="line-height:1.35; min-width:240px;">
           <div style="font-weight:900; font-size:14px; margin-bottom:6px;">Lote ${fmt(props[ID_FIELD])}</div>
           <div><b>Permiso:</b> ${permisoChipHTML(props.PERMISO)}</div>
-          <div><b>Cat. lote:</b> ${fmt(props.CAT_LOTE_I)}</div>
-          <div><b>Número lote:</b> ${fmt(props.NUMERO_LOT)}</div>
           <div><b>Clave catastral:</b> ${fmt(props.CLAVE_CATA)}</div>
+          <div><b>Número lote:</b> ${fmt(props.NUMERO_LOT)}</div>
           <div><b>Parroquia:</b> ${fmt(props.PARROQUIA)}</div>
           <div><b>Zonificación:</b> ${fmt(props.ZONIFICACI)}</div>
           <div><b>Área:</b> ${fmt(props.AREA_TERRE)}</div>
         </div>
       `;
 
-      highlightLayer.bindPopup(popup).openPopup();
-      setStatus(`✅ Lote ${fmt(props[ID_FIELD])} encontrado`);
+      L.popup().setLatLng(e.latlng).setContent(popup).openOn(map);
+    }catch(err){
+      console.error(err);
+      setStatus("⚠️ Error consultando GetFeatureInfo.");
     }
+  });
 
-    // =========================
-    // 2) Click: GetFeatureInfo
-    // =========================
-    function getFeatureInfoUrl(latlng) {
-      const point = map.latLngToContainerPoint(latlng, map.getZoom());
-      const size  = map.getSize();
-
-      const bounds = map.getBounds();
-      const sw = bounds.getSouthWest();
-      const ne = bounds.getNorthEast();
-
-      function project3857(ll) {
-        const d = Math.PI / 180;
-        const max = 85.0511287798;
-        const lat = Math.max(Math.min(max, ll.lat), -max);
-        const sin = Math.sin(lat * d);
-        const x = 6378137 * ll.lng * d;
-        const y = 6378137 * Math.log((1 + sin) / (1 - sin)) / 2;
-        return { x, y };
-      }
-
-      const swm = project3857(sw);
-      const nem = project3857(ne);
-      const bbox = `${swm.x},${swm.y},${nem.x},${nem.y}`;
-
-      const params =
-        `SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo` +
-        `&LAYERS=${encodeURIComponent(LAYER_NAME)}` +
-        `&QUERY_LAYERS=${encodeURIComponent(LAYER_NAME)}` +
-        `&CRS=EPSG:3857` +
-        `&BBOX=${bbox}` +
-        `&WIDTH=${size.x}&HEIGHT=${size.y}` +
-        `&I=${Math.round(point.x)}&J=${Math.round(point.y)}` +
-        `&INFO_FORMAT=application/json` +
-        `&FEATURE_COUNT=5`;
-
-      return `${OWS_BASE}?${params}`;
+  // =========================
+  // INIT
+  // =========================
+  (async function(){
+    try{
+      await fitToWmsExtent();        // ✅ ya no se centra “en Quinindé fijo”
+      if (idLote) await zoomToLoteByWFS(idLote);  // ✅ id=55 funciona
+      else setStatus("Mapa listo. Tip: agrega ?id_lote=55 (QR).");
+    }catch(e){
+      console.error(e);
+      setStatus("⚠️ No se pudo ajustar extent / consultar servicios.");
     }
-
-    async function onMapClick(e) {
-      try {
-        const url = getFeatureInfoUrl(e.latlng);
-        const r = await fetch(url);
-        if (!r.ok) throw new Error("GetFeatureInfo no respondió OK");
-
-        const data = await r.json();
-        const features = data.features || [];
-
-        if (!features.length) {
-          setStatus("👀 No hay lote en ese punto.");
-          return;
-        }
-
-        const f = features[0];
-        const props = f.properties || {};
-
-        setStatus("✅ Info cargada (click).");
-
-        clearHighlight();
-        if (f.geometry) {
-          highlightLayer = L.geoJSON(f, {
-            pane: "highlight",
-            style: { color: "#111", weight: 3, fillOpacity: 0.18 }
-          }).addTo(map);
-        }
-
-        const popup = `
-          <div style="line-height:1.35; min-width:220px;">
-            <div style="font-weight:900; font-size:14px; margin-bottom:6px;">Lote ${fmt(props[ID_FIELD])}</div>
-            <div><b>Permiso:</b> ${permisoChipHTML(props.PERMISO)}</div>
-            <div><b>Cat. lote:</b> ${fmt(props.CAT_LOTE_I)}</div>
-            <div><b>Número lote:</b> ${fmt(props.NUMERO_LOT)}</div>
-            <div><b>Clave catastral:</b> ${fmt(props.CLAVE_CATA)}</div>
-            <div><b>Parroquia:</b> ${fmt(props.PARROQUIA)}</div>
-            <div><b>Zonificación:</b> ${fmt(props.ZONIFICACI)}</div>
-            <div><b>Área:</b> ${fmt(props.AREA_TERRE)}</div>
-          </div>
-        `;
-
-        L.popup()
-          .setLatLng(e.latlng)
-          .setContent(popup)
-          .openOn(map);
-
-      } catch (err) {
-        console.error(err);
-        setStatus("⚠️ Error consultando GetFeatureInfo.");
-      }
-    }
-
-    map.on("click", onMapClick);
-
-    // =========================
-    // Init
-    // =========================
-    (async function init() {
-      try {
-        if (idLote) {
-          await zoomToLoteByWFS(idLote);
-        } else {
-          setStatus("Mapa listo. Tip: agrega ?id_lote=123 (QR).");
-        }
-      } catch (e) {
-        console.error(e);
-        setStatus("⚠️ No se pudo hacer zoom por WFS. Igual puedes verificar con click.");
-      }
-    })();
-  </script>
+  })();
+</script>
 </body>
 </html>
