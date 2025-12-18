@@ -12,4 +12,4 @@ ENV QGIS_SERVER_LOG_LEVEL=0
 
 # QGIS Server en esta imagen suele correr detrás de Apache y expone 80 internamente.
 # Railway hace el proxy al puerto del contenedor, así que no necesitas hardcodear $PORT aquí.
-EXPOSE 66
+EXPOSE 80
