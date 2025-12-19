@@ -9,35 +9,205 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
-    #panel{
-      position:absolute; top:12px; left:12px; z-index:1000;
-      background:rgba(255,255,255,.95); padding:10px 12px;
-      border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,.18);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      min-width:260px; max-width:360px;
+    :root{
+      --bg: rgba(255,255,255,.92);
+      --shadow: 0 10px 25px rgba(0,0,0,.18);
+      --radius: 16px;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: rgba(0,0,0,.08);
     }
-    #title{ font-weight:900; margin-bottom:6px; }
-    #status{ font-size:13px; margin-bottom:8px; }
-    .pill{ display:inline-block; padding:3px 8px; border-radius:999px; background:#f2f2f2; font-size:12px; }
-    .hint{ font-size:12px; color:#555; margin-top:8px; line-height:1.3; }
-    #legendWrap{ margin-top:10px; }
-    #legendWrap img{ width:100%; border:1px solid #eee; border-radius:10px; }
-    .perm-chip{ display:inline-block; padding:2px 8px; border-radius:999px; font-weight:900; font-size:12px; border:1px solid rgba(0,0,0,.08); }
+
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+
+    /* Panel */
+    #panel{
+      position: absolute;
+      top: 12px; left: 12px;
+      z-index: 1000;
+      background: var(--bg);
+      padding: 12px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      width: 340px;
+      max-width: calc(100vw - 24px);
+      backdrop-filter: blur(6px);
+    }
+
+    .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    #title{ font-weight: 900; font-size: 18px; color: var(--text); }
+    #status{ font-size: 13px; color: var(--text); margin-top: 6px; }
+
+    .pill{
+      display:inline-flex; align-items:center; gap:6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.05);
+      font-size: 12px;
+      border: 1px solid var(--border);
+      color: var(--text);
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .hint{
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 10px;
+      line-height: 1.35;
+    }
+
+    /* Leyenda bonita */
+    .legendCard{
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.75);
+      border: 1px solid var(--border);
+    }
+    .legendTitle{
+      font-weight: 900;
+      color: var(--text);
+      margin-bottom: 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .legendSub{
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: -6px;
+      margin-bottom: 10px;
+    }
+    .legendItem{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.85);
+      margin-bottom: 8px;
+    }
+    .legendLeft{
+      display:flex; align-items:center; gap:10px;
+      min-width: 0;
+    }
+    .swatch{
+      width: 18px; height: 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(0,0,0,.18);
+      flex: 0 0 auto;
+    }
+    .legendLabel{
+      font-weight: 800;
+      color: var(--text);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .legendBadge{
+      font-size: 11px;
+      color: var(--muted);
+      background: rgba(0,0,0,.04);
+      border: 1px solid var(--border);
+      padding: 3px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    /* Toggle móvil */
+    #toggleBtn{
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.85);
+      border-radius: 12px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-weight: 900;
+      color: var(--text);
+      display: none; /* solo móvil */
+    }
+
+    /* Popup */
+    .perm-chip{
+      display:inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 12px;
+      border: 1px solid rgba(0,0,0,.08);
+    }
+
+    /* Responsive */
+    @media (max-width: 760px){
+      #panel{
+        left: 10px;
+        right: 10px;
+        top: 10px;
+        width: auto;
+      }
+      #toggleBtn{ display: inline-flex; align-items:center; gap:8px; }
+      #panelBody{ display: none; margin-top: 10px; }
+      #panel.open #panelBody{ display: block; }
+      .hint{ display:none; } /* en móvil para no ocupar espacio */
+    }
   </style>
 </head>
+
 <body>
-  <div id="panel">
-    <div id="title">Visor de Lotes</div>
-    <div id="status">Cargando…</div>
-    <div class="pill" id="qrPill">QR: —</div>
-    <div class="hint">
-      • Click en un lote para ver info<br>
-      • O usa <b>?id_lote=55</b> en el link (QR)
+  <div id="panel" class="open">
+    <div class="row">
+      <div id="title">Visor de Lotes</div>
+      <button id="toggleBtn" type="button">☰ Panel</button>
     </div>
-    <div id="legendWrap">
-      <div style="font-weight:800; margin:10px 0 6px;">Leyenda</div>
-      <img id="legendImg" alt="Leyenda WMS"/>
+
+    <div id="panelBody">
+      <div id="status">Cargando…</div>
+      <div style="margin-top:8px;">
+        <span class="pill" id="qrPill">QR: —</span>
+      </div>
+
+      <div class="hint">
+        • Click en un lote para ver info<br>
+        • O usa <b>?id_lote=55</b> en el link (QR)
+      </div>
+
+      <div class="legendCard">
+        <div class="legendTitle">
+          <span>Leyenda</span>
+          <span class="legendBadge" id="layerName">lotes_demo</span>
+        </div>
+        <div class="legendSub">Clasificación por permiso</div>
+
+        <!-- Ajusta colores si deseas, pero por ahora los dejamos como se ven en tu estilo -->
+        <div class="legendItem">
+          <div class="legendLeft">
+            <span class="swatch" style="background:#22b8e6;"></span>
+            <span class="legendLabel">CONSTRUCCIÓN</span>
+          </div>
+          <span class="legendBadge">PERMISO</span>
+        </div>
+
+        <div class="legendItem">
+          <div class="legendLeft">
+            <span class="swatch" style="background:#f59f00;"></span>
+            <span class="legendLabel">DERROCAMIENTO</span>
+          </div>
+          <span class="legendBadge">PERMISO</span>
+        </div>
+
+        <div class="legendItem" style="margin-bottom:0;">
+          <div class="legendLeft">
+            <span class="swatch" style="background:#d1d5db;"></span>
+            <span class="legendLabel">NO APLICA</span>
+          </div>
+          <span class="legendBadge">PERMISO</span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -45,25 +215,34 @@
 
 <script>
   // =========================
-  // CONFIG (IMPORTANTE)
+  // CONFIG
   // =========================
-  // OJO: usamos /ows/ relativo porque lo va a servir tu NGINX (proxy) en ESTE MISMO dominio.
   const OWS_BASE   = "/ows/";
   const LAYER_NAME = "lotes_demo";
-  const ID_FIELD   = "OBJECTID";   // tu QR usa OBJECTID (ej 55)
+  const ID_FIELD   = "OBJECTID";
 
   // =========================
-  // UI helpers
+  // UI
   // =========================
   const qs = new URLSearchParams(location.search);
   const idLote = qs.get("id_lote");
   const statusEl = document.getElementById("status");
   const qrPill = document.getElementById("qrPill");
   qrPill.textContent = `QR: ${idLote ?? "—"}`;
+  document.getElementById("layerName").textContent = LAYER_NAME;
 
   function setStatus(msg){ statusEl.textContent = msg; }
   function fmt(v){ return (v===null || v===undefined || v==="") ? "—" : v; }
 
+  // Toggle panel móvil
+  const panel = document.getElementById("panel");
+  const toggleBtn = document.getElementById("toggleBtn");
+  toggleBtn.addEventListener("click", () => {
+    panel.classList.toggle("open");
+    setTimeout(() => map.invalidateSize(), 150);
+  });
+
+  // Colores por PERMISO (en popup)
   function permisoInfo(p){
     const val = (p ?? "").toString().trim().toUpperCase();
     if (val.includes("CONSTRU")) return { text: p, fg:"#0b6b2f", bg:"#d9fbe5" };
@@ -79,80 +258,60 @@
   // =========================
   // MAP
   // =========================
-  // Vista temporal mientras leemos el extent del WMS
   const map = L.map("map").setView([0,0], 2);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 20, attribution: "© OpenStreetMap"
+    maxZoom: 20,
+    attribution: "© OpenStreetMap"
   }).addTo(map);
 
   const wmsLayer = L.tileLayer.wms(OWS_BASE, {
     layers: LAYER_NAME,
     format: "image/png",
     transparent: true,
-    version: "1.3.0",
-    minZoom: 0,   // nivel mínimo permitido
-    maxZoom: 20   // nivel máximo, igual que OSM
-
+    version: "1.3.0"
   }).addTo(map);
 
-  // Leyenda
-  document.getElementById("legendImg").src =
-    `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(LAYER_NAME)}`;
-
-  // Highlight
   map.createPane("highlight");
   map.getPane("highlight").style.zIndex = 650;
+
   let highlightLayer = null;
   function clearHighlight(){
     if (highlightLayer){ map.removeLayer(highlightLayer); highlightLayer = null; }
   }
 
   // =========================
-  // 1) Extent automático desde GetCapabilities
+  // Extent desde Capabilities
   // =========================
   async function fitToWmsExtent(){
     setStatus("Leyendo extent del WMS…");
     const url = `${OWS_BASE}?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetCapabilities`;
-
     const r = await fetch(url);
     if (!r.ok) throw new Error("No se pudo leer GetCapabilities");
     const txt = await r.text();
-
     const xml = new DOMParser().parseFromString(txt, "text/xml");
-    // busca el Layer por Name = lotes_demo
-    const layers = Array.from(xml.getElementsByTagName("Layer"));
-    const target = layers.find(L => {
-      const name = L.getElementsByTagName("Name")[0]?.textContent?.trim();
-      return name === LAYER_NAME;
-    });
 
+    const layers = Array.from(xml.getElementsByTagName("Layer"));
+    const target = layers.find(L => (L.getElementsByTagName("Name")[0]?.textContent?.trim() === LAYER_NAME));
     if (!target) throw new Error("No encontré la capa en Capabilities");
 
-    // Preferimos EX_GeographicBoundingBox (WMS 1.3.0)
     const ex = target.getElementsByTagName("EX_GeographicBoundingBox")[0];
     if (ex){
       const west  = parseFloat(ex.getElementsByTagName("westBoundLongitude")[0].textContent);
       const east  = parseFloat(ex.getElementsByTagName("eastBoundLongitude")[0].textContent);
       const south = parseFloat(ex.getElementsByTagName("southBoundLatitude")[0].textContent);
       const north = parseFloat(ex.getElementsByTagName("northBoundLatitude")[0].textContent);
-
-      const bounds = L.latLngBounds([south, west], [north, east]);
-      map.fitBounds(bounds, { padding:[20,20] });
-      setStatus("✅ Extent ajustado al WMS");
+      map.fitBounds(L.latLngBounds([south, west], [north, east]), { padding:[20,20] });
       return;
     }
 
-    // fallback: LatLonBoundingBox
     const ll = target.getElementsByTagName("LatLonBoundingBox")[0];
     if (ll){
       const west  = parseFloat(ll.getAttribute("minx"));
       const south = parseFloat(ll.getAttribute("miny"));
       const east  = parseFloat(ll.getAttribute("maxx"));
       const north = parseFloat(ll.getAttribute("maxy"));
-      const bounds = L.latLngBounds([south, west], [north, east]);
-      map.fitBounds(bounds, { padding:[20,20] });
-      setStatus("✅ Extent ajustado al WMS");
+      map.fitBounds(L.latLngBounds([south, west], [north, east]), { padding:[20,20] });
       return;
     }
 
@@ -160,7 +319,7 @@
   }
 
   // =========================
-  // 2) QR -> WFS (zoom + popup)
+  // QR -> WFS zoom + popup
   // =========================
   async function zoomToLoteByWFS(idValue){
     const baseWFS =
@@ -177,8 +336,8 @@
       </Filter>`;
 
     const url = baseWFS + "&FILTER=" + encodeURIComponent(filterXml);
-
     setStatus(`Buscando lote ${idValue}…`);
+
     const r = await fetch(url);
     if (!r.ok) throw new Error("WFS no respondió OK");
     const data = await r.json();
@@ -215,7 +374,7 @@
   }
 
   // =========================
-  // 3) Click -> GetFeatureInfo (JSON)
+  // Click -> GetFeatureInfo
   // =========================
   function project3857(ll){
     const d = Math.PI/180, max=85.0511287798;
@@ -225,7 +384,6 @@
     const y = 6378137 * Math.log((1 + sin) / (1 - sin)) / 2;
     return {x,y};
   }
-
   function getFeatureInfoUrl(latlng){
     const point = map.latLngToContainerPoint(latlng, map.getZoom());
     const size = map.getSize();
@@ -245,8 +403,7 @@
 
   map.on("click", async (e) => {
     try{
-      const url = getFeatureInfoUrl(e.latlng);
-      const r = await fetch(url);
+      const r = await fetch(getFeatureInfoUrl(e.latlng));
       if (!r.ok) throw new Error("GetFeatureInfo no OK");
       const data = await r.json();
       const f = (data.features || [])[0];
@@ -271,7 +428,6 @@
           <div><b>Área:</b> ${fmt(props.AREA_TERRE)}</div>
         </div>
       `;
-
       L.popup().setLatLng(e.latlng).setContent(popup).openOn(map);
     }catch(err){
       console.error(err);
@@ -280,12 +436,12 @@
   });
 
   // =========================
-  // INIT
+  // Init
   // =========================
   (async function(){
     try{
-      await fitToWmsExtent();        // ✅ ya no se centra “en Quinindé fijo”
-      if (idLote) await zoomToLoteByWFS(idLote);  // ✅ id=55 funciona
+      await fitToWmsExtent();
+      if (idLote) await zoomToLoteByWFS(idLote);
       else setStatus("Mapa listo. Tip: agrega ?id_lote=55 (QR).");
     }catch(e){
       console.error(e);
