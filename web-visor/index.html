@@ -438,16 +438,35 @@
   // =========================
   // Init
   // =========================
+
   (async function(){
     try{
+      if (idLote) {
+        // 1) Si hay QR, ir directo al lote (sin saltar al mundo ni al extent)
+        await zoomToLoteByWFS(idLote);
+        return;
+      }
+  
+      // 2) Si NO hay QR, ahí sí ajustamos al extent general del WMS
       await fitToWmsExtent();
-      if (idLote) await zoomToLoteByWFS(idLote);
-      else setStatus("Mapa listo. Tip: agrega ?id_lote=55 (QR).");
-    }catch(e){
+      setStatus("Mapa listo. Tip: agrega ?id_lote=55 (QR).");
+  
+    } catch(e){
       console.error(e);
-      setStatus("⚠️ No se pudo ajustar extent / consultar servicios.");
+  
+      // Fallback: si falló buscar por WFS (o capabilities), intenta al menos ajustar extent
+      try {
+        await fitToWmsExtent();
+        setStatus("Mapa listo (fallback).");
+      } catch (e2) {
+        console.error(e2);
+        setStatus("⚠️ No se pudo ajustar extent / consultar servicios.");
+      }
     }
   })();
+
+
+  
 </script>
 </body>
 </html>
