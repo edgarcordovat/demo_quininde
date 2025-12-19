@@ -7,6 +7,8 @@
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.nontiledlayer@1.0.7/dist/NonTiledLayer.js"></script>
+
 
   <style>
     :root{
@@ -318,7 +320,7 @@
     attribution: "© OpenStreetMap"
   }).addTo(map);
 
-  const wmsLayer = L.tileLayer.wms(OWS_BASE, {
+  const wmsLayer = L.nonTiledLayer.wms(OWS_BASE, {
     layers: LAYER_NAME,
     format: "image/png",
     transparent: true,
